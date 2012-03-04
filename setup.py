@@ -1,7 +1,8 @@
 from setuptools import setup
+from timeouts import __version__
 
 setup(name='timeouts',
-      version='0.1',
+      version=__version__,
       description='Python Timeouts',
       author='Michael Barton',
       author_email='mike@weirdlooking.com',
