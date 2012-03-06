@@ -5,7 +5,12 @@ import timeouts
 
 __patch__ = ['socket', 'SocketType', '_socketobject', 'create_connection']
 
-timeouts.patch(globals(), stdlib_socket, __patch__)
+
+for key in dir(stdlib_socket):
+    if key not in __patch__ and key not in \
+            ('__builtins__', '__package__', '__file__'):
+        globals()[key] = getattr(stdlib_socket, key)
+
 
 _orig_socket = stdlib_socket.socket
 class socket(_orig_socket):
@@ -15,9 +20,13 @@ class socket(_orig_socket):
         def patch(func_name):
             orig_func = getattr(self, func_name)
             def new_func(*args, **kwargs):
+                new_func.__doc__ = orig_func.__doc__
+                new_func.__name__ = orig_func.__name__
                 timeout, exception = timeouts.next_timeout()
-                if timeout < 0:
+                if timeout is None:
                     return orig_func(*args, **kwargs)
+                if timeout <= 0:
+                    raise exception
                 self.settimeout(timeout)
                 try:
                     return orig_func(*args, **kwargs)

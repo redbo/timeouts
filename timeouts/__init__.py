@@ -1,27 +1,35 @@
 import threading
 import sys
 
+import timeouts.patched_socket
+import timeouts.patched_time
+
+
 __version__ = '0.2'
 
 _timeout_stack = threading.local()
 
+_to_patch = {'socket': timeouts.patched_socket,
+            'time': timeouts.patched_time}
 
-def next_timeout():
-    """
-    Returns (timeout, exception) for the next timeout in the stack.
-    Or (-1, None) if there are no timeouts in the stack.
-    """
-    if not getattr(_timeout_stack, 'values', None):
-        return -1, None
-    timeout, exception = min(_timeout_stack.values)
-    return timeout - time.time(), exception
+def patched(module_name):
+    orig_modules = {}
+    try:
+        for name, module in _to_patch.iteritems():
+            orig_modules[name] = sys.modules.get(name, None)
+            sys.modules[name] = module
+        return __import__(module_name, {}, {}, module_name.split('.')[:-1], 0)
+    finally:
+        for name, module in orig_modules.iteritems():
+            if module:
+                sys.modules[name] = module
+            else:
+                del sys.modules[name]
 
 
-def patch(globals, lib, patchlist):
-    for key in dir(lib):
-        if key not in patchlist and key not in \
-                ('__builtins__', '__package__', '__file__'):
-            globals[key] = getattr(lib, key)
+socket = timeouts.patched_socket
+time = timeouts.patched_time
+httplib = patched('httplib')
 
 
 def monkey_patch():
@@ -29,14 +37,24 @@ def monkey_patch():
     Monkey patch blocking methods to time out and raise the timeout
     exception.
     """
-    for lib in ('socket', 'time'):
-        stdlib_v = __import__(lib)
-        timeouts_v = __import__('timeouts.' + lib, fromlist=['timeouts'])
+    for name, lib in _to_patch.iteritems():
+        stdlib_v = __import__(name)
         if hasattr(stdlib_v, '_timeout_patched'):
             continue
-        for key in timeouts_v.__patch__:
-            setattr(stdlib_v, key, getattr(timeouts_v, key))
+        for key in lib.__patch__:
+            setattr(stdlib_v, key, getattr(lib, key))
         stdlib_v._timeout_patched = True
+
+
+def next_timeout():
+    """
+    Returns (timeout, exception) for the next timeout in the stack.
+    Or (None, None) if there are no timeouts in the stack.
+    """
+    if not getattr(_timeout_stack, 'values', None):
+        return None, None
+    timeout, exception = min(_timeout_stack.values)
+    return timeout - time.time(), exception
 
 
 class Timeout(BaseException):

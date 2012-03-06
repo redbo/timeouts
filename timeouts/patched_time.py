@@ -6,9 +6,14 @@ import timeouts
 __patch__ = ['sleep']
 
 
-timeouts.patch(globals(), stdlib_time, __patch__)
+for key in dir(stdlib_time):
+    if key not in __patch__ and key not in \
+            ('__builtins__', '__package__', '__file__'):
+        globals()[key] = getattr(stdlib_time, key)
+
 
 _orig_sleep = stdlib_time.sleep
+
 
 def sleep(sleep_time):
     timeout, exception = timeouts.next_timeout()
